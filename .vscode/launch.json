@@ -1,0 +1,25 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Sprockets API",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "${workspaceFolder}/Sprockets.Orders.Api/bin/debug/net8.0/Sprockets.Orders.Api.dll",
+            "cwd": "${workspaceFolder}/Sprockets.Orders.Api",
+            "preLaunchTask": "Build Sprockets API"
+        },
+        {
+            "name": "Sprockets Console",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "${workspaceFolder}/Sprockets.Console.PluginTest/bin/debug/net8.0/Sprockets.Console.PluginTest.dll",
+            "cwd": "${workspaceFolder}/Sprockets.Console.PluginTest",
+            "preLaunchTask": "Build Console App",
+            "console": "integratedTerminal"
+        }
+    ]
+}
