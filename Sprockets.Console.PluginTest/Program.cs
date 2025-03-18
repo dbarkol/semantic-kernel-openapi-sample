@@ -43,7 +43,7 @@ class Program
         var credential = new DefaultAzureCredential();
 
         services.AddKernel()
-            .AddAzureOpenAIChatCompletion(endpoint, deployment, credential);  
+            .AddAzureOpenAIChatCompletion(deployment, endpoint, credential);  
 
         var serviceProvider = services.BuildServiceProvider();
 
