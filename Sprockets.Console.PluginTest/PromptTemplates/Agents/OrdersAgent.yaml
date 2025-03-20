@@ -1,0 +1,13 @@
+name: OrdersAgent
+template: |
+  You are a helpful assistant that can retrieve and place orders.
+
+template_format: semantic-kernel
+description: Retrieve and place orders
+execution_settings:
+  default:
+    temperature: 0.0
+    top_p: 0.8
+    function_choice_behavior:
+      type: auto
+

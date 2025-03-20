@@ -36,28 +36,27 @@ namespace Sprockets.Orders.Api.Controllers
         }
 
         /// <summary>
-        /// Creates new orders.
+        /// Creates an order
         /// </summary>
-        /// <param name="orders">The collection of orders to create.</param>
-        /// <returns>The created orders.</returns>
-        /// <response code="201">Returns the newly created orders.</response>
-        /// <response code="400">If the orders collection is null or empty.</response>
+        /// <param name="order">The order to create</param>
+        /// <returns>The created order</returns>
+        /// <response code="201">Returns the newly created order</response>
+        /// <response code="400">If the order is null</response>
         [HttpPost]
-        [SwaggerOperation(OperationId="CreateOrders", Summary = "Creates new orders", Description = "Creates a new collection of orders.")]
-        [ProducesResponseType(typeof(IEnumerable<Order>), StatusCodes.Status201Created)]
+        [SwaggerOperation(OperationId="CreateOrder", Summary = "Creates a new order", Description = "Creates a new order")]
+        [ProducesResponseType(typeof(Order), StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [Produces("application/json")]
-        public IActionResult CreateOrders([FromBody] IEnumerable<Order> orders)
+        public IActionResult CreateOrder([FromBody] Order order)
         {
-            if (orders == null || !orders.Any())
+            if (order == null)
             {
-                return BadRequest("Orders collection is null or empty.");
+                return BadRequest("Order cannot be null.");
             }
 
             // Here you would typically add the orders to a database or other storage
-            // For this example, we'll just return the orders that were passed in
-
-            return CreatedAtAction(nameof(GetOrders), new { }, orders);
+            // For this example, we'll just return the orders that were passed in            
+            return CreatedAtAction(nameof(CreateOrder), new { id = order.Id }, order);
         }
 
         // /// <summary>

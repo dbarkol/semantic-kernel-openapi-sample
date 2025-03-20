@@ -2,3 +2,14 @@
 
 GET {{Api_HostAddress}}/orders/
 Accept: application/json
+
+
+###
+POST {{Api_HostAddress}}/orders/
+Content-Type: application/json
+
+{
+    "id": 2,
+    "product": "Test",
+    "quantity": 45
+}

@@ -1,23 +1,14 @@
 ﻿using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Plugins.OpenApi;
-using Microsoft.SemanticKernel.Connectors.OpenAI;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.SemanticKernel.Agents;
+using Microsoft.SemanticKernel.ChatCompletion;
 using dotenv.net;
 using Azure.Identity;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.DependencyInjection;
-
-// https://learn.microsoft.com/en-us/dotnet/api/microsoft.semantickernel?view=semantic-kernel-dotnet
-
-class LoggingHandler : DelegatingHandler
-{
-    public LoggingHandler() : base(new HttpClientHandler()) { }
-
-    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-    {
-        Console.WriteLine($"Constructed URI: {request.RequestUri}");
-        return await base.SendAsync(request, cancellationToken);
-    }
-}
+using Sprockets.Console.PluginTest.Models;
+using System.Text.Json;
+using Microsoft.VisualBasic;
 
 class Program
 {
@@ -25,51 +16,66 @@ class Program
     {
         var services = new ServiceCollection();
 
-        services.AddLogging(builder =>
-        {
-            builder.ClearProviders();
-            builder.AddConsole();
-            builder.SetMinimumLevel(LogLevel.Debug);
-        });
+        // services.AddLogging(builder =>
+        // {
+        //     builder.ClearProviders();
+        //     builder.AddConsole();
+        //     builder.SetMinimumLevel(LogLevel.Debug);
+        // });
 
         LoadEnvFile();
-
         string endpoint = Environment.GetEnvironmentVariable("AZURE_OPENAI_ENDPOINT")
             ?? throw new InvalidOperationException("Environment variable 'AZURE_OPENAI_ENDPOINT' is not set.");
 
         string deployment = Environment.GetEnvironmentVariable("AZURE_OPENAI_DEPLOYMENT_NAME")
             ?? throw new InvalidOperationException("Environment variable 'AZURE_OPENAI_DEPLOYMENT_NAME' is not set.");        
 
-        var credential = new DefaultAzureCredential();
-
         services.AddKernel()
-            .AddAzureOpenAIChatCompletion(deployment, endpoint, credential);  
+            .AddAzureOpenAIChatCompletion(deployment, endpoint, new DefaultAzureCredential());  
 
         var serviceProvider = services.BuildServiceProvider();
-
-        // Retrieve Kernel instance
         var kernel = serviceProvider.GetRequiredService<Kernel>();
 
-        await TestOrdersPlugin(kernel);
-        Console.WriteLine("Plugin test completed.");
+        //await TestOrdersPlugin(kernel);
+        await AgentOpenApiPlugin(kernel);        
+    }
+
+    static async Task AgentOpenApiPlugin(Kernel kernel)
+    {
+        var ordersAgentPrompt = await ReadYamlFile("PromptTemplates/Agents/OrdersAgent.yaml");
+        PromptTemplateConfig templateConfig = KernelFunctionYaml.ToPromptTemplateConfig(ordersAgentPrompt);
+        ChatCompletionAgent agent = new(templateConfig, new KernelPromptTemplateFactory())
+        {
+            Kernel = kernel
+        };
+
+        using var httpClient = new HttpClient(new LoggingHandler());
+        var plugin = await kernel.ImportPluginFromOpenApiAsync(
+            "OrderService", 
+            new Uri("http://localhost:5275/swagger/v1/swagger.json"), 
+            new OpenApiFunctionExecutionParameters(httpClient)
+            {
+                ServerUrlOverride = new Uri("http://localhost:5275/")
+            }
+        );
+
+        ChatHistory chat = []; 
+        
+        var newOrder = new Order { Id = 12, Product = "Widget1", Quantity = 10 };
+        string serializedOrder = JsonSerializer.Serialize(newOrder, new JsonSerializerOptions { WriteIndented = true });
+        chat.AddUserMessage(serializedOrder);
+
+        await foreach (ChatMessageContent response in agent.InvokeAsync(chat))
+        {
+            Console.WriteLine(response);
+        }
     }
 
     static async Task TestOrdersPlugin(Kernel kernel)
     {
-
         PromptExecutionSettings settings = new() { 
-            FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(),
-        };
-
-        var executionSettings = new OpenAIPromptExecutionSettings
-        {
-            Temperature = 0,
-            TopP = 0.1,
-            PresencePenalty = 0,
-            FrequencyPenalty = 0,
-            MaxTokens = 2000,
-            FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
-        };        
+            FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()            
+        };    
 
         var handler = new HttpClientHandler
         {
@@ -86,19 +92,31 @@ class Program
             }
         );
 
-        var result = await kernel.InvokeAsync(plugin["GetAllOrders"], new KernelArguments());
-        Console.WriteLine(result.ToString());
+        // Get orders
+        var getOrdersResult = await kernel.InvokePromptAsync("Get all orders", new(settings));    
+        Console.WriteLine(getOrdersResult);
 
-        try
-        {
-            var promptResult = await kernel.InvokePromptAsync("Invoke the GetAllOrders function", new(settings));
-            Console.WriteLine(promptResult);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Semantic inference call error: {ex}");
-        }
+        // Test with natural language prompt
+        string userPrompt = "Please create two orders: one for product 'Widget A' with id 101 and quantity 5, and another for product 'Widget B' with id 102 and quantity 10.";
+        var createOrderResult = await kernel.InvokePromptAsync(userPrompt, new(settings));
+        Console.WriteLine(createOrderResult);
+
+        // Test with JSON payload
+        var newOrder = new Order { Id = 12, Product = "Widget1", Quantity = 10 };
+        string serializedOrder = JsonSerializer.Serialize(newOrder, new JsonSerializerOptions { WriteIndented = true });
+        var jsonPromptResult = await kernel.InvokePromptAsync($"{serializedOrder}", new(settings));
+        Console.WriteLine(jsonPromptResult);
     }
+
+    private static async Task<string> ReadYamlFile(string filename)
+    {
+        var filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, filename);
+
+        if (!File.Exists(filePath))
+            throw new FileNotFoundException($"File '{filename}' not found at '{filePath}'.");
+
+        return await File.ReadAllTextAsync(filePath);
+    }  
 
     private static void LoadEnvFile()
     {
@@ -121,4 +139,15 @@ class Program
     }    
 }
 
+class LoggingHandler : DelegatingHandler
+{
+    public LoggingHandler() : base(new HttpClientHandler()) { }
+
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var content = request.Content != null ? await request.Content.ReadAsStringAsync() : "No content";
+        Console.WriteLine($"Constructed URI: {request.Method} - {request.RequestUri} - {content}");
+        return await base.SendAsync(request, cancellationToken);
+    }
+}
 
